@@ -1,0 +1,17 @@
+client_id: example-client-id-edge-trigger-agg-short-window
+client_name: example-client-name
+client_key: example-api-key-1234567890
+ip_rpm: 0 # 0 means no rate limiting
+client_rpm: 0 # 0 means no rate limiting
+trigger:
+  field: event.type
+  target:
+    sns_arn: arn:aws:sns:us-east-1:123456789012:example-topic
+    sns_rpm: 0 # 0 means no rate limiting
+  flapping:
+    window_seconds: 10  # using short window, this is the shortest allowed
+    suppress_below: 0
+    aggregate_at: 5  # 0 means no aggregation, trigger as is
+    aggregate_max_items: 10  # hard cap is 128
+    aggregate_cooldown_seconds: 0
+    reset_after_stable_seconds: 0
