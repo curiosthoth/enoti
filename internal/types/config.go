@@ -34,6 +34,7 @@ const (
 
 // Passthrough allows filtering of events before any other processing but after IP/Client rate limits.
 // Anything matching the Passthrough rule is forwarded as-is to the target without applying dedup or trigger logic.
+// The FieldExpr is a JMESPath expression that yields a boolean.
 // When negate is true, the rule is inverted (i.e. events NOT matching the expression are passed through).
 // To check the key existence at root level, use "contains(keys(@), '<key-name>')"; to check for existence in a map, use
 // "contains(<map-field>, '<key-name>')".

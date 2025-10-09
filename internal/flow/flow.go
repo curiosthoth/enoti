@@ -28,12 +28,9 @@ func Auth(ctx context.Context, cc types.ClientConfig, clientID, clientKey string
 // Note that rate limiting are not deemed as errors, instead they are indicated in the return values and proper statusCode
 // to pass back to the caller.
 func Run(ctx context.Context, clientID, clientIP string, cc types.ClientConfig,
-	rl ports.RateLimiter, es ports.EdgeStore,
-	payload map[string]any) (
-	action Action,
-	statusCode int,
-	newPayload map[string]any,
-	err error) {
+	rl ports.RateLimiter,
+	es ports.EdgeStore,
+	payload map[string]any) (action Action, statusCode int, newPayload map[string]any, err error) {
 
 	action = NoOp
 	statusCode = http.StatusAccepted
