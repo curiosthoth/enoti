@@ -18,15 +18,13 @@ const (
 
 // RunServer runs the HTTP server exposing the `/notify` endpoint. This is a blocking call.
 func RunServer(port int,
-	clientStore ports.ConfigStore,
-	edgeStore ports.EdgeStore,
-	rateLimiter ports.RateLimiter,
+	clientStore ports.ClientStore,
+	dataStore ports.DataStore,
 	publisher ports.Publisher,
 ) {
 	h := NewHandler(
 		clientStore,
-		rateLimiter,
-		edgeStore,
+		dataStore,
 		publisher,
 	)
 
@@ -43,15 +41,13 @@ func RunServer(port int,
 // the caller. The caller can then send a signal to the chan to gracefully shutdown the server.
 // It's up to the caller to wait for in the main Go routine to keep the server running.
 func RunServerInterruptible(port int,
-	clientStore ports.ConfigStore,
-	edgeStore ports.EdgeStore,
-	rateLimiter ports.RateLimiter,
+	clientStore ports.ClientStore,
+	dataStore ports.DataStore,
 	publisher ports.Publisher,
 ) (stop chan<- struct{}, done <-chan error) {
 	h := NewHandler(
 		clientStore,
-		rateLimiter,
-		edgeStore,
+		dataStore,
 		publisher,
 	)
 
@@ -88,11 +84,11 @@ func RunServerInterruptible(port int,
 
 // RunSNSLambdaEntryPoint is for AWS Lambda entry point. This is for receiving event from SNS notifictation
 // from within an AWS Lambda. SNSInboundEvent is defined in types.go
+// TODO: implement this later
 func RunSNSLambdaEntryPoint(ctx context.Context,
 	event types.SNSInboundEvent,
-	clientStore ports.ConfigStore,
-	edgeStore ports.EdgeStore,
-	rateLimiter ports.RateLimiter,
+	clientStore ports.ClientStore,
+	edgeStore ports.DataStore,
 	publisher ports.Publisher,
 ) error {
 	return nil

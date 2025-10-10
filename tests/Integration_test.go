@@ -7,40 +7,40 @@ import (
 	"enoti/cmd/enoti/cmds"
 	"enoti/internal/api"
 	"enoti/internal/backends/ddb"
+	redisbackend "enoti/internal/backends/redis"
 	"enoti/internal/flow"
 	"enoti/internal/ports"
 	"enoti/internal/types"
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
+	"os"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/suite"
 )
 
 const (
 	AWSMockPort    = 4566
+	LocalRedisPort = 46379
 	TestServerPort = 39080
 	TestTableName  = "notify_guard_test-clients"
 )
-
-var wg sync.WaitGroup
 
 type IntegrationTestSuite struct {
 	suite.Suite
 
 	publisher *TestPublish
 
-	clientStore      ports.ConfigStore
-	edgeStore        ports.EdgeStore
-	rateLimiterStore ports.RateLimiter
-	stopChan         chan<- struct{} // Send only
-	doneChan         <-chan error    // Receive only
+	clientStore ports.ClientStore
+	dataStore   ports.DataStore
+	stopChan    chan<- struct{} // Send only
+	doneChan    <-chan error    // Receive only
 }
 
 type TestPublish struct {
@@ -58,7 +58,27 @@ func (s *TestPublish) SetOnPublish(fn func(ctx context.Context, arn string, payl
 func (s *IntegrationTestSuite) SetupSuite() {
 	// Start the server in a Goroutine
 	// Makes sure the aws mock is running at port AWSMockPort
-	ctx := context.Background()
+	if os.Getenv("TEST_USE_REDIS_BACKEND") != "" {
+		s.initRedisBackend()
+	} else {
+		s.initDDBBackend(context.Background())
+	}
+	s.publisher = &TestPublish{}
+	s.publisher.SetOnPublish(func(ctx context.Context, arn string, payload []byte) error {
+		fmt.Printf("PublishRaw called: [%s] %s\n", arn, string(payload))
+		return nil
+	})
+	// Start go routine with the api.RunServer()
+	s.stopChan, s.doneChan = api.RunServerInterruptible(
+		TestServerPort,
+		s.clientStore,
+		s.dataStore,
+		s.publisher,
+	)
+}
+
+// initDDBBackend requires the local AWS Mock (moto) running at port `AWSMockPort`
+func (s *IntegrationTestSuite) initDDBBackend(ctx context.Context) {
 	awsCfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		s.FailNow("Failed to load AWS config", err)
@@ -71,22 +91,17 @@ func (s *IntegrationTestSuite) SetupSuite() {
 		credProvider := credentials.NewStaticCredentialsProvider("test", "test", "")
 		o.Credentials = credProvider
 	})
+	s.clientStore = ddb.NewClientStore(TestTableName, ddbClient)
+	s.dataStore = ddb.NewDataStore(TestTableName, ddbClient)
+}
 
-	clientStore := ddb.NewClientStore(TestTableName, ddbClient)
-	s.rateLimiterStore = ddb.NewDataStore(TestTableName, ddbClient)
-	s.edgeStore = ddb.NewDataStore(TestTableName, ddbClient)
-	s.publisher = &TestPublish{}
-	s.publisher.SetOnPublish(func(ctx context.Context, arn string, payload []byte) error {
-		fmt.Printf("PublishRaw called: [%s] %s\n", arn, string(payload))
-		return nil
+func (s *IntegrationTestSuite) initRedisBackend() {
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: fmt.Sprintf("localhost:%d", LocalRedisPort),
+		DB:   0, // use default DB
 	})
-	s.NoError(err)
-	s.clientStore = clientStore
-	// Start go routine with the api.RunServer()
-	s.stopChan, s.doneChan = api.RunServerInterruptible(
-		TestServerPort,
-		clientStore, s.edgeStore, s.rateLimiterStore, s.publisher,
-	)
+	s.clientStore = redisbackend.NewClientStore(redisClient)
+	s.dataStore = redisbackend.NewDataStore(redisClient)
 }
 
 func (s *IntegrationTestSuite) TearDownSuite() {

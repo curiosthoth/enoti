@@ -27,9 +27,9 @@ func Auth(ctx context.Context, cc types.ClientConfig, clientID, clientKey string
 // Run is the core logic to process a notification payload. It returns the action to take for the next publishing step.
 // Note that rate limiting are not deemed as errors, instead they are indicated in the return values and proper statusCode
 // to pass back to the caller.
-func Run(ctx context.Context, clientID, clientIP string, cc types.ClientConfig,
-	rl ports.RateLimiter,
-	es ports.EdgeStore,
+func Run(ctx context.Context, clientID, clientIP string,
+	cc types.ClientConfig,
+	dataStore ports.DataStore,
 	payload map[string]any) (action Action, statusCode int, newPayload map[string]any, err error) {
 
 	action = NoOp
@@ -39,13 +39,13 @@ func Run(ctx context.Context, clientID, clientIP string, cc types.ClientConfig,
 	// Rate limits: IP + client
 	if cc.IPRPM > 0 {
 		ip := clientIP
-		if ok, _ := rl.Acquire(ctx, "IP:"+ip, cc.IPRPM, time.Minute); !ok {
+		if ok, _ := dataStore.Acquire(ctx, "IP:"+ip, cc.IPRPM, time.Minute); !ok {
 			err = fmt.Errorf("rate limit (ip)")
 			return
 		}
 	}
 	if cc.ClientRPM > 0 {
-		if ok, _ := rl.Acquire(ctx, "CLIENT:"+clientID, cc.ClientRPM, time.Minute); !ok {
+		if ok, _ := dataStore.Acquire(ctx, "CLIENT:"+clientID, cc.ClientRPM, time.Minute); !ok {
 			err = fmt.Errorf("rate limit (client)")
 			return
 		}
@@ -74,7 +74,7 @@ func Run(ctx context.Context, clientID, clientIP string, cc types.ClientConfig,
 		scopeKey := ComputeKey(cc.Trigger.FieldExpr)
 		// Edge + flapping; one retry on CAS race
 		action, newPayload, err = EvaluateEdgeAndFlap(
-			ctx, es, clientID, scopeKey, *newVal, cc.Trigger.Flapping,
+			ctx, dataStore, clientID, scopeKey, *newVal, cc.Trigger.Flapping,
 			payload,
 		)
 		if err != nil {
@@ -87,7 +87,7 @@ func Run(ctx context.Context, clientID, clientIP string, cc types.ClientConfig,
 	// Target limit
 	targetScope := "TARGET:" + clientID + ":" + cc.Trigger.Target.SNSArn
 	if action == EdgeTriggeredForward || action == AggregateSent {
-		if ok, _ := rl.Acquire(ctx, targetScope, cc.Trigger.Target.SNSRPM, time.Minute); !ok {
+		if ok, _ := dataStore.Acquire(ctx, targetScope, cc.Trigger.Target.SNSRPM, time.Minute); !ok {
 			statusCode = http.StatusTooManyRequests
 		}
 	}
@@ -102,7 +102,7 @@ func ComputeKey(s string) string {
 }
 
 // LoadCachedClientConfig loads client config from cache or store.
-func LoadCachedClientConfig(ctx context.Context, cs ports.ConfigStore, id string) (types.ClientConfig, error) {
+func LoadCachedClientConfig(ctx context.Context, cs ports.ClientStore, id string) (types.ClientConfig, error) {
 	if v, ok := cfgCache.Get(id); ok {
 		return v, nil
 	}

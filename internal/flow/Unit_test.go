@@ -19,7 +19,7 @@ var wg sync.WaitGroup
 type UnitTestSuite struct {
 	suite.Suite
 
-	clientStore ports.ConfigStore
+	clientStore ports.ClientStore
 	stopChan    chan<- struct{} // Send only
 	doneChan    <-chan error    // Receive only
 }

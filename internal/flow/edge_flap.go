@@ -21,7 +21,7 @@ var dec, _ = zstd.NewReader(nil)
 // Callers SHOULD retry once on CAS collision (see handler below).
 func EvaluateEdgeAndFlap(
 	ctx context.Context,
-	store ports.EdgeStore,
+	store ports.DataStore,
 	clientID,
 	scopeKey string,
 	newVal string,

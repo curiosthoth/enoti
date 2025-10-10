@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"enoti/internal/flow"
 	"enoti/internal/ports"
 	"enoti/internal/types"
@@ -10,12 +9,13 @@ import (
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/goccy/go-json"
 )
 
 type Handler struct {
-	ConfigStore ports.ConfigStore
-	Rate        ports.RateLimiter
-	Edge        ports.EdgeStore
+	ClientStore ports.ClientStore
+	DataStore   ports.DataStore
 	Pub         ports.Publisher
 }
 
@@ -23,11 +23,10 @@ type Publisher interface {
 	PublishRaw(ctx context.Context, arn string, payload []byte) error
 }
 
-func NewHandler(cl ports.ConfigStore, rl ports.RateLimiter, es ports.EdgeStore, pub ports.Publisher) *Handler {
+func NewHandler(cl ports.ClientStore, es ports.DataStore, pub ports.Publisher) *Handler {
 	return &Handler{
-		ConfigStore: cl,
-		Rate:        rl,
-		Edge:        es,
+		ClientStore: cl,
+		DataStore:   es,
 		Pub:         pub,
 	}
 }
@@ -50,7 +49,7 @@ func (h *Handler) handleNotify(w http.ResponseWriter, r *http.Request) {
 	clientKey := r.Header.Get(types.ClientKeyHdrName)
 	// Config (TTL cache → store)
 	ctx := r.Context()
-	cc, err := flow.LoadCachedClientConfig(ctx, h.ConfigStore, clientID)
+	cc, err := flow.LoadCachedClientConfig(ctx, h.ClientStore, clientID)
 	if err != nil {
 		http.Error(w, "unknown client", http.StatusUnauthorized)
 		return
@@ -82,10 +81,11 @@ func (h *Handler) handleNotify(w http.ResponseWriter, r *http.Request) {
 
 	action, statusCode, newPayload, err := flow.Run(
 		ctx, clientID, clientIP(r), cc,
-		h.Rate, h.Edge,
+		h.DataStore,
 		payload)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	switch action {
 	case flow.NoOp, flow.SuppressFlapping, flow.SuppressDedup:

@@ -106,6 +106,7 @@ func (s *DataStore) UpsertCAS(ctx context.Context, clientID, scopeKey string, pr
 		return true, nil
 	}
 
+	recentMarshaled := mustMarshalAttr(next.Recent)
 	// Update with version bump under condition ver == prevVersion
 	_, err := s.cli.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: &s.table,
@@ -130,7 +131,7 @@ func (s *DataStore) UpsertCAS(ctx context.Context, clientID, scopeKey string, pr
 			":lcts":   &ddbTypes.AttributeValueMemberN{Value: itoa(next.LastChangeTS)},
 			":ws":     &ddbTypes.AttributeValueMemberN{Value: itoa(next.WindowStart)},
 			":fc":     &ddbTypes.AttributeValueMemberN{Value: itoa(int64(next.FlipCount))},
-			":rc":     mustMarshalAttr(next.Recent),
+			":rc":     recentMarshaled,
 			":aut":    &ddbTypes.AttributeValueMemberN{Value: itoa(next.AggUntilTS)},
 			":newver": &ddbTypes.AttributeValueMemberN{Value: itoa(prevVersion + 1)},
 			":prev":   &ddbTypes.AttributeValueMemberN{Value: itoa(prevVersion)},

@@ -294,6 +294,9 @@ func (s *IntegrationTestSuite) TestEdgeTriggerAggregateCrossWindows() {
 	for i := 0; i < 25; i++ {
 		et := fmt.Sprintf("e%d", i%5)
 		fmt.Printf("%d : %s\t", i, et)
+		if i == 5 {
+			fmt.Println()
+		}
 		r, err := s.notify(
 			"example-client-id-edge-trigger-agg-short-window",
 			"example-api-key-1234567890",
