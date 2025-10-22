@@ -1,0 +1,29 @@
+# Build stage
+FROM golang:1.25-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git make
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the Lambda binary (must be named 'bootstrap' for AWS Lambda)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags=lambda -ldflags="-w -s" -o /app/bin/bootstrap ./cmd/lambda-sqs
+
+# Runtime stage - using AWS Lambda provided base image
+FROM public.ecr.aws/lambda/provided:al2023
+
+# Copy the bootstrap binary from builder
+COPY --from=builder /app/bin/bootstrap ${LAMBDA_RUNTIME_DIR}/bootstrap
+
+# Set the CMD to your handler (could also be done as a parameter override outside)
+CMD [ "bootstrap" ]

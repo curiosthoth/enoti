@@ -327,24 +327,6 @@ func (s *IntegrationTestSuite) TestEdgeTriggerAggregateCrossWindows() {
 	}
 	s.Equal(7, cnt)
 	s.Equal(20, maxID) // The last 5 events are not sent out
-	//
-	//// Add a push to flush the last 4
-	//r, err := s.notify(
-	//	"example-client-id-edge-trigger-agg-short-window",
-	//	"example-api-key-1234567890",
-	//	map[string]any{
-	//		"id":      10000,
-	//		"message": "Hello, Edge Trigger!",
-	//		"subject": "Edge Trigger Test Last!",
-	//		"event": map[string]any{
-	//			"type": "last push",
-	//		},
-	//	},
-	//)
-	//s.NoError(err)
-	//s.assertSuccessStatus(r, flow.StatusTextMap[flow.AggregateSent], nil)
-	//s.Equal(8, cnt)
-	//s.Equal(10000, maxID) // The last 4 events plus this one are sent out
 }
 
 // TestEdgeTriggerAggregateCrossWindows tests the edge trigger functionality:
