@@ -1,0 +1,5 @@
+client_id: example-client-id-rate-limit-client
+client_name: example-client-name
+client_key: example-api-key-1234567890
+ip_rpm: 0 # No IP rate limiting
+client_rpm: 3 # Allow only 3 requests per minute per client

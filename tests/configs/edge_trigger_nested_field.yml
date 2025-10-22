@@ -1,0 +1,17 @@
+client_id: example-client-id-edge-trigger-nested
+client_name: example-client-name
+client_key: example-api-key-1234567890
+ip_rpm: 0
+client_rpm: 0
+trigger:
+  field: event.metadata.status  # Test nested field access
+  target:
+    sns_arn: arn:aws:sns:us-east-1:123456789012:example-topic
+    sns_rpm: 0
+  flapping:
+    window_seconds: 60
+    suppress_below: 0
+    aggregate_at: 0
+    aggregate_max_items: 10
+    aggregate_cooldown_seconds: 0
+    reset_after_stable_seconds: 0

@@ -84,20 +84,40 @@ func (h *Handler) handleNotify(w http.ResponseWriter, r *http.Request) {
 		h.DataStore,
 		payload)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), statusCode)
 		return
 	}
 	switch action {
 	case flow.NoOp, flow.SuppressFlapping, flow.SuppressDedup:
-		writeJSON(w, statusCode, map[string]any{"status": flow.StatusTextMap[action]})
+		if err := writeJSON(w, statusCode, map[string]any{"status": flow.StatusTextMap[action]}); err != nil {
+			http.Error(w, "failed to write response", http.StatusInternalServerError)
+		}
 	case flow.AggregateSent:
-		b, _ := json.Marshal(newPayload)
-		_ = h.Pub.PublishRaw(ctx, cc.Trigger.Target.SNSArn, b)
-		writeJSON(w, http.StatusAccepted, map[string]any{"status": flow.StatusTextMap[action]})
+		b, err := json.Marshal(newPayload)
+		if err != nil {
+			http.Error(w, "failed to marshal payload", http.StatusInternalServerError)
+			return
+		}
+		if err := h.Pub.PublishRaw(ctx, cc.Trigger.Target.SNSArn, b); err != nil {
+			http.Error(w, "failed to publish", http.StatusInternalServerError)
+			return
+		}
+		if err := writeJSON(w, http.StatusAccepted, map[string]any{"status": flow.StatusTextMap[action]}); err != nil {
+			http.Error(w, "failed to write response", http.StatusInternalServerError)
+		}
 	case flow.EdgeTriggeredForward, flow.ForwardedAsIs:
-		b, _ := json.Marshal(payload)
-		_ = h.Pub.PublishRaw(ctx, cc.Trigger.Target.SNSArn, b)
-		writeJSON(w, http.StatusAccepted, map[string]any{"status": flow.StatusTextMap[action]})
+		b, err := json.Marshal(payload)
+		if err != nil {
+			http.Error(w, "failed to marshal payload", http.StatusInternalServerError)
+			return
+		}
+		if err := h.Pub.PublishRaw(ctx, cc.Trigger.Target.SNSArn, b); err != nil {
+			http.Error(w, "failed to publish", http.StatusInternalServerError)
+			return
+		}
+		if err := writeJSON(w, http.StatusAccepted, map[string]any{"status": flow.StatusTextMap[action]}); err != nil {
+			http.Error(w, "failed to write response", http.StatusInternalServerError)
+		}
 	}
 }
 
@@ -106,13 +126,17 @@ func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		return strings.TrimSpace(strings.Split(xff, ",")[0])
 	}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// If SplitHostPort fails, return the RemoteAddr as-is
+		return r.RemoteAddr
+	}
 	return host
 }
 
 // writeJSON writes a JSON response with the given status code.
-func writeJSON(w http.ResponseWriter, code int, v any) {
+func writeJSON(w http.ResponseWriter, code int, v any) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+	return json.NewEncoder(w).Encode(v)
 }

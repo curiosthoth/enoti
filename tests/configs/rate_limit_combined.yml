@@ -1,0 +1,17 @@
+client_id: example-client-id-rate-limit-combined
+client_name: example-client-name
+client_key: example-api-key-1234567890
+ip_rpm: 10 # Allow 10 requests per minute per IP
+client_rpm: 5 # Allow 5 requests per minute per client
+trigger:
+  field: event.type
+  target:
+    sns_arn: arn:aws:sns:us-east-1:123456789012:example-topic
+    sns_rpm: 3 # Allow only 3 SNS publishes per minute
+  flapping:
+    window_seconds: 60
+    suppress_below: 0
+    aggregate_at: 0
+    aggregate_max_items: 10
+    aggregate_cooldown_seconds: 0
+    reset_after_stable_seconds: 0

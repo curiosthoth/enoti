@@ -36,8 +36,11 @@ func (s *DataStore) Suppress(ctx context.Context, clientID, hash string, window 
 		SK:        skDedup(hash),
 		ExpiresAt: time.Now().Add(window).Unix(),
 	}
-	av, _ := attributevalue.MarshalMap(item)
-	_, err := s.cli.PutItem(ctx, &dynamodb.PutItemInput{
+	av, err := attributevalue.MarshalMap(item)
+	if err != nil {
+		return false, err
+	}
+	_, err = s.cli.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName:           &s.table,
 		Item:                av,
 		ConditionExpression: awsString("attribute_not_exists(PK) AND attribute_not_exists(SK)"),
@@ -79,7 +82,7 @@ func (s *DataStore) UpsertCAS(ctx context.Context, clientID, scopeKey string, pr
 	next.ScopeKey = scopeKey // safety
 	if prevVersion == 0 {
 		next.Version = 1
-		av, _ := attributevalue.MarshalMap(map[string]any{
+		av, err := attributevalue.MarshalMap(map[string]any{
 			"PK":             pkClient(clientID),
 			"SK":             skEdge(scopeKey),
 			"scope_key":      next.ScopeKey,
@@ -91,7 +94,10 @@ func (s *DataStore) UpsertCAS(ctx context.Context, clientID, scopeKey string, pr
 			"agg_until_ts":   next.AggUntilTS,
 			"ver":            next.Version,
 		})
-		_, err := s.cli.PutItem(ctx, &dynamodb.PutItemInput{
+		if err != nil {
+			return false, err
+		}
+		_, err = s.cli.PutItem(ctx, &dynamodb.PutItemInput{
 			TableName:           &s.table,
 			Item:                av,
 			ConditionExpression: awsString("attribute_not_exists(PK) AND attribute_not_exists(SK)"),

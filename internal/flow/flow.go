@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Auth checks the clientID and clientKey against the config store.
@@ -39,13 +41,25 @@ func Run(ctx context.Context, clientID, clientIP string,
 	// Rate limits: IP + client
 	if cc.IPRPM > 0 {
 		ip := clientIP
-		if ok, _ := dataStore.Acquire(ctx, "IP:"+ip, cc.IPRPM, time.Minute); !ok {
+		ok, acquireErr := dataStore.Acquire(ctx, "IP:"+ip, cc.IPRPM, time.Minute)
+		if acquireErr != nil {
+			log.WithError(acquireErr).Error("failed to acquire IP rate limit")
+			err = fmt.Errorf("rate limit check failed")
+			return
+		}
+		if !ok {
 			err = fmt.Errorf("rate limit (ip)")
 			return
 		}
 	}
 	if cc.ClientRPM > 0 {
-		if ok, _ := dataStore.Acquire(ctx, "CLIENT:"+clientID, cc.ClientRPM, time.Minute); !ok {
+		ok, acquireErr := dataStore.Acquire(ctx, "CLIENT:"+clientID, cc.ClientRPM, time.Minute)
+		if acquireErr != nil {
+			log.WithError(acquireErr).Error("failed to acquire client rate limit")
+			err = fmt.Errorf("rate limit check failed")
+			return
+		}
+		if !ok {
 			err = fmt.Errorf("rate limit (client)")
 			return
 		}
@@ -85,9 +99,17 @@ func Run(ctx context.Context, clientID, clientIP string,
 	}
 
 	// Target limit
-	targetScope := "TARGET:" + clientID + ":" + cc.Trigger.Target.SNSArn
-	if action == EdgeTriggeredForward || action == AggregateSent {
-		if ok, _ := dataStore.Acquire(ctx, targetScope, cc.Trigger.Target.SNSRPM, time.Minute); !ok {
+	if (action == EdgeTriggeredForward || action == AggregateSent) && cc.Trigger.Target.SNSRPM > 0 {
+		targetScope := "TARGET:" + clientID + ":" + cc.Trigger.Target.SNSArn
+		ok, acquireErr := dataStore.Acquire(ctx, targetScope, cc.Trigger.Target.SNSRPM, time.Minute)
+		if acquireErr != nil {
+			log.WithError(acquireErr).Error("failed to acquire target rate limit")
+			statusCode = http.StatusInternalServerError
+			err = fmt.Errorf("rate limit check failed")
+			return
+		}
+		if !ok {
+			action = NoOp
 			statusCode = http.StatusTooManyRequests
 		}
 	}
@@ -97,6 +119,7 @@ func Run(ctx context.Context, clientID, clientIP string,
 // ComputeKey generates a quick hash of the given string with fixed length.
 func ComputeKey(s string) string {
 	h := fnv.New32a()
+	// hash.Hash.Write never returns an error according to the interface contract
 	_, _ = h.Write([]byte(s))
 	return fmt.Sprintf("e%d", h.Sum32())
 }

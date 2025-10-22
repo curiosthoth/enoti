@@ -98,9 +98,6 @@ func (s *DataStore) UpsertCAS(ctx context.Context, clientID, scopeKey string, pr
 			"agg_until_ts":   next.AggUntilTS,
 			"ver":            next.Version,
 		}
-		if err != nil {
-			return false, err
-		}
 		// Set all fields
 		out := s.cli.HMSet(ctx, getDataKeyName(clientID, scopeKey), av)
 		if out.Err() != nil {

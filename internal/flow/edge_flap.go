@@ -9,13 +9,28 @@ import (
 
 	json "github.com/goccy/go-json"
 	"github.com/klauspost/compress/zstd"
+	log "github.com/sirupsen/logrus"
 )
 
 // Action indicates what to do after evaluating the new value against state.
 type Action int
 
-var enc, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
-var dec, _ = zstd.NewReader(nil)
+var (
+	enc *zstd.Encoder
+	dec *zstd.Decoder
+)
+
+func init() {
+	var err error
+	enc, err = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	if err != nil {
+		panic("failed to create zstd encoder: " + err.Error())
+	}
+	dec, err = zstd.NewReader(nil)
+	if err != nil {
+		panic("failed to create zstd decoder: " + err.Error())
+	}
+}
 
 // EvaluateEdgeAndFlap applies edge detection + flapping logic and persists state via CAS.
 // Callers SHOULD retry once on CAS collision (see handler below).
@@ -95,7 +110,9 @@ func EvaluateEdgeAndFlap(
 
 		// Suppress initial flips under tolerance
 		if edgeInfo.FlipCount <= f.SuppressBelow {
-			_, _ = store.UpsertCAS(ctx, clientID, scopeKey, ver, *edgeInfo)
+			if _, err := store.UpsertCAS(ctx, clientID, scopeKey, ver, *edgeInfo); err != nil {
+				log.WithError(err).Error("failed to upsert CAS for suppressed flip")
+			}
 			return SuppressFlapping, nil, nil
 		}
 
@@ -103,7 +120,7 @@ func EvaluateEdgeAndFlap(
 		if f.AggregateAt > 0 && !newWindow {
 			var agg map[string]any
 			action := SuppressFlapping
-			if edgeInfo.FlipCount >= f.AggregateAt && now > edgeInfo.AggUntilTS && len(edgeInfo.Recent) >= f.AggregateAt {
+			if edgeInfo.FlipCount%f.AggregateAt == 0 && now >= edgeInfo.AggUntilTS && len(edgeInfo.Recent) >= f.AggregateAt {
 				edgeInfo.AggUntilTS = now + int64(f.AggregateCooldownSeconds)
 				agg = BuildAggregate(edgeInfo, f.AggregateMaxItems)
 				// Trim the edgeInfo.Recent
@@ -166,7 +183,9 @@ func BuildAggregate(edgeInfo *types.Edge, k int) map[string]any {
 			if it.Payload != "" {
 				b, err := DecodePayload(it.Payload)
 				if err == nil {
-					_ = json.Unmarshal(b, &pl)
+					if err := json.Unmarshal(b, &pl); err != nil {
+						log.WithError(err).Error("failed to unmarshal payload in aggregate")
+					}
 				}
 			}
 			items = append(items, map[string]any{
